@@ -83,7 +83,6 @@ int main(int argc, char **argv)
     signal(SIGINT, sig_handler);
     while (keep_running)
     {
-        sleep(1);
         struct icmphdr echo_req;
         echo_req.code = 0;
         echo_req.type = ICMP_ECHO;
@@ -128,8 +127,9 @@ int main(int argc, char **argv)
             continue;
 
         double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
-
-        printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
+        char host[NI_MAXHOST];
+        if (getnameinfo((struct sockaddr *)&reply_addr, sizeof(reply_addr), host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0)
+            printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
 
         seq++;
         recv_count++;
@@ -137,6 +137,10 @@ int main(int argc, char **argv)
         if (rtt > max_rtt) max_rtt = rtt;
         sum_rtt += rtt;
         sum_rtt_sq += rtt * rtt;
+
+        if (!keep_running)
+            break;
+        usleep(1000000);
     }
 
     double avg = 0.0, mdev = 0.0;
@@ -152,8 +156,8 @@ int main(int argc, char **argv)
     double loss = sent_count > 0 ? (sent_count - recv_count) * 100.0 / sent_count : 0.0;
 
     printf("\n--- %s ping statistics ---\n", argv[1]);
-    printf("%d packets transmitted, %d received, %d%% packet loss, time %.1f ms\n", sent_count, recv_count, (int)loss, total_time);
-    printf("rtt min/avg/max/mdev = %.1f/%.1f/%.1f/%.1f ms\n", min_rtt, avg, max_rtt, mdev);
+    printf("%d packets transmitted, %d received, %d%% packet loss, time %.0fms\n", sent_count, recv_count, (int)loss, total_time);
+    printf("rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n", min_rtt, avg, max_rtt, mdev);
 
     freeaddrinfo(res);
     close(sockfd);
