@@ -1,0 +1,20 @@
+# Objects & binaries
+*.o
+*.a
+*.d
+*.out
+
+# Build dirs
+objs/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+vgcore*
