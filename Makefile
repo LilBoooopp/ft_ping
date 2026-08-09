@@ -14,12 +14,13 @@ PRINTF    = $(addprefix $(PRINTF_DIR), $(PRINTF_A))
 
 #--------------------------------------SOURCES---------------------------------#
 SRC_DIR = src/
-SRC_SRC =  \
+SRC_SRC = \
 	main.c
+
 SRC = $(addprefix $(SRC_DIR), $(SRC_SRC))
 
-ALL_SRC = $(SRC) 
-vpath %.c src 
+ALL_SRC = $(SRC)
+vpath %.c src
 #--------------------------------------OBJECTS----------------------------------#
 OBJ_DIR  = Objects/
 OBJECTS  = $(patsubst %.c,$(OBJ_DIR)%.o,$(notdir $(ALL_SRC)))
