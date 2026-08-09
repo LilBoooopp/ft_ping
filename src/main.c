@@ -1,4 +1,5 @@
 #include "../libft/libft.h"
+#include <asm-generic/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -56,51 +57,64 @@ int main(int argc, char **argv)
     sockaddr = (struct sockaddr_in *)res->ai_addr;
     printf("Resolved: %s\n", inet_ntoa(sockaddr->sin_addr));
 
-    struct icmphdr echo_req;
-    echo_req.code = 0;
-    echo_req.type = ICMP_ECHO;
-    echo_req.un.echo.id = getpid() & 0xFFFF;
-    echo_req.un.echo.sequence = 1;
-    echo_req.checksum = 0;
-    echo_req.checksum = checksum(&echo_req, sizeof(echo_req));
+    int seq = 1;
 
-    if (sendto(sockfd, &echo_req, sizeof(echo_req), 0, (struct sockaddr *)sockaddr, sizeof(*sockaddr)) < 0)
+    struct timeval timeout = { .tv_sec = 1, .tv_usec = 0 };
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    while (1)
     {
-        perror("sendto");
-        return (1);
+        struct icmphdr echo_req;
+        echo_req.code = 0;
+        echo_req.type = ICMP_ECHO;
+        echo_req.un.echo.id = getpid() & 0xFFFF;
+        echo_req.un.echo.sequence = seq;
+        echo_req.checksum = 0;
+        echo_req.checksum = checksum(&echo_req, sizeof(echo_req));
+
+        if (sendto(sockfd, &echo_req, sizeof(echo_req), 0, (struct sockaddr *)sockaddr, sizeof(*sockaddr)) < 0)
+        {
+            perror("sendto");
+            return (1);
+        }
+
+        // RECEIVE
+        char recv_buf[64];
+        struct sockaddr_in reply_addr;
+        socklen_t addr_len = sizeof(reply_addr);
+        struct timeval start, end;
+        ssize_t bytes;
+
+        gettimeofday(&start, NULL);
+        bytes = recvfrom(sockfd, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&reply_addr, &addr_len);
+        if (bytes < 0)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                ; // packet lost
+            else
+            {
+                perror("recvfrom");
+                return (1);
+            }
+        }
+        gettimeofday(&end, NULL);
+
+        struct iphdr *ip = (struct iphdr *)recv_buf;
+        unsigned int ip_hdr_len = ip->ihl * 4;
+        struct icmphdr *reply = (struct icmphdr *)(recv_buf + ip_hdr_len);
+
+        if (reply->type != ICMP_ECHOREPLY || reply->un.echo.id != (getpid() & 0xFFFF))
+        {
+            fprintf(stderr, "Wrong reply\n");
+            return (1);
+        }
+
+        double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
+
+        printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
+
+        seq++;
+        sleep(1);
     }
-    printf("Sent ICMP echo request (8 bytes)\n");
-
-    // RECEIVE
-    char recv_buf[64];
-    struct sockaddr_in reply_addr;
-    socklen_t addr_len = sizeof(reply_addr);
-    struct timeval start, end;
-    ssize_t bytes;
-
-    gettimeofday(&start, NULL);
-    bytes = recvfrom(sockfd, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&reply_addr, &addr_len);
-    if (bytes < 0)
-    {
-        perror("recvfrom");
-        return (1);
-    }
-    gettimeofday(&end, NULL);
-
-    struct iphdr *ip = (struct iphdr *)recv_buf;
-    unsigned int ip_hdr_len = ip->ihl * 4;
-    struct icmphdr *reply = (struct icmphdr *)(recv_buf + ip_hdr_len);
-
-    if (reply->type != ICMP_ECHOREPLY || reply->un.echo.id != (getpid() & 0xFFFF))
-    {
-        fprintf(stderr, "Wrong reply\n");
-        return (1);
-    }
-
-    double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
-
-    printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
-
 
     freeaddrinfo(res);
     close(sockfd);
