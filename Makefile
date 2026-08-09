@@ -3,7 +3,7 @@ NAME = ft_ping
 CC   = cc
 INC = include
 RM   = rm -rf
-FLAGS = -Werror -Wextra -Wall -g -I$(INC) #-fsanitize=address
+FLAGS = -Werror -Wextra -Wall -g -I$(INC) -lm#-fsanitize=address
 MAKE := make --no-print-directory
 
 #────────────────────────────  LIBFT SECTION  ────────────────────────────────#
