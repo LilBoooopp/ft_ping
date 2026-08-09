@@ -35,7 +35,7 @@ int main(int argc, char **argv)
     struct addrinfo *res;
     
     if (argc < 2)
-        return (printf("Not enough arguments."), 1);
+        return (printf("Not enough arguments.\n"), 1);
     sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sockfd == -1)
         return (perror("sockfd failed"), 1);
@@ -70,6 +70,37 @@ int main(int argc, char **argv)
         return (1);
     }
     printf("Sent ICMP echo request (8 bytes)\n");
+
+    // RECEIVE
+    char recv_buf[64];
+    struct sockaddr_in reply_addr;
+    socklen_t addr_len = sizeof(reply_addr);
+    struct timeval start, end;
+    ssize_t bytes;
+
+    gettimeofday(&start, NULL);
+    bytes = recvfrom(sockfd, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&reply_addr, &addr_len);
+    if (bytes < 0)
+    {
+        perror("recvfrom");
+        return (1);
+    }
+    gettimeofday(&end, NULL);
+
+    struct iphdr *ip = (struct iphdr *)recv_buf;
+    unsigned int ip_hdr_len = ip->ihl * 4;
+    struct icmphdr *reply = (struct icmphdr *)(recv_buf + ip_hdr_len);
+
+    if (reply->type != ICMP_ECHOREPLY || reply->un.echo.id != (getpid() & 0xFFFF))
+    {
+        fprintf(stderr, "Wrong reply\n");
+        return (1);
+    }
+
+    double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
+
+    printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
+
 
     freeaddrinfo(res);
     close(sockfd);
