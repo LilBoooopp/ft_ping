@@ -18,3 +18,4 @@ objs/
 .idea/
 
 vgcore*
+/ft_ping

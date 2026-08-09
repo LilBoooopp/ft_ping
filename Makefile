@@ -1,5 +1,5 @@
 #───────────────────────────  PROJECT BASICS  ────────────────────────────────#
-NAME = template
+NAME = ft_ping
 CC   = cc
 INC = include
 RM   = rm -rf
