@@ -144,13 +144,10 @@ int main(int argc, char **argv)
         bytes = recvfrom(sockfd, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&reply_addr, &addr_len);
         if (bytes < 0)
         {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
                 continue; // packet lost
-            else
-            {
-                perror("recvfrom");
-                return (1);
-            }
+            perror("recvfrom");
+            return (1);
         }
         gettimeofday(&end, NULL);
 
@@ -194,6 +191,8 @@ int main(int argc, char **argv)
         avg = sum_rtt / recv_count;
         mdev = sqrt(sum_rtt_sq / recv_count - avg * avg);
     }
+    else
+        min_rtt = 0.0;
 
     struct timeval prog_end;
     gettimeofday(&prog_end, NULL);
