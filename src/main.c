@@ -72,6 +72,7 @@ int main(int argc, char **argv)
     int ttl = 0;
     int deadline = 0;
     int global_deadline = 0;
+    int flood = 0;
 
     while (opt_idx < argc && argv[opt_idx][0] == '-')
     {
@@ -103,6 +104,8 @@ int main(int argc, char **argv)
                 return (printf("ft_ping: option '-w' requires a numeric argument\n"), 1);
             global_deadline = ft_atoi(argv[opt_idx]);
         }
+        else if (ft_strcmp(argv[opt_idx], "-f") == 0)
+            flood = 1;
         else if (ft_strcmp(argv[opt_idx], "-n") == 0)
             ;
         else
@@ -176,6 +179,8 @@ int main(int argc, char **argv)
             return (1);
         }
         sent_count++;
+        if (flood)
+            write(1, ".", 1);
 
         // RECEIVE
         char recv_buf[64];
@@ -214,8 +219,13 @@ int main(int argc, char **argv)
 
         double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
         char host[NI_MAXHOST];
-        if (getnameinfo((struct sockaddr *)&reply_addr, sizeof(reply_addr), host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0)
-            printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
+        if (flood)
+            write(1, "\b \b", 3);
+        else
+        {
+            if (getnameinfo((struct sockaddr *)&reply_addr, sizeof(reply_addr), host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0)
+                printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
+        }
 
         recv_count++;
         if (rtt < min_rtt) min_rtt = rtt;
@@ -227,7 +237,8 @@ int main(int argc, char **argv)
             break;
         if (global_deadline > 0 && time(NULL) >= stop_time)
             break;
-        usleep(1000000);
+        if (!flood)
+            usleep(1000000);
     }
 
     double avg = 0.0, mdev = 0.0;
