@@ -73,6 +73,7 @@ int main(int argc, char **argv)
     int deadline = 0;
     int global_deadline = 0;
     int flood = 0;
+    int datasize = 56;
 
     while (opt_idx < argc && argv[opt_idx][0] == '-')
     {
@@ -103,6 +104,13 @@ int main(int argc, char **argv)
             if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
                 return (printf("ft_ping: option '-w' requires a numeric argument\n"), 1);
             global_deadline = ft_atoi(argv[opt_idx]);
+        }
+        else if (ft_strcmp(argv[opt_idx], "-s") == 0)
+{
+            opt_idx++;
+            if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
+                return (printf("ft_ping: option '-s' requires a numeric argument\n"), 1);
+            datasize = ft_atoi(argv[opt_idx]);
         }
         else if (ft_strcmp(argv[opt_idx], "-f") == 0)
             flood = 1;
@@ -136,7 +144,7 @@ int main(int argc, char **argv)
 
     struct sockaddr_in *sockaddr;
     sockaddr = (struct sockaddr_in *)res->ai_addr;
-    printf("PING %s (%s) 56(84) bytes of data.\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr));
+    printf("PING %s (%s) %d(%d) bytes of data.\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr), datasize, (int)(datasize + sizeof(struct icmphdr)));
 
     int seq = 1;
 
@@ -162,18 +170,25 @@ int main(int argc, char **argv)
         stop_time = prog_start.tv_sec + global_deadline;
 
     signal(SIGINT, sig_handler);
+
+    int packet_size = sizeof(struct icmphdr) + datasize;
+    int recv_size = sizeof(struct iphdr) + packet_size + 64;
+
+    char *send_buf = ft_calloc(1, packet_size);
+    char *recv_buf = ft_calloc(1, recv_size);
+
     while (keep_running)
     {
-        struct icmphdr echo_req;
-        echo_req.code = 0;
-        echo_req.type = ICMP_ECHO;
-        echo_req.un.echo.id = getpid() & 0xFFFF;
-        echo_req.un.echo.sequence = seq;
-        echo_req.checksum = 0;
-        echo_req.checksum = checksum(&echo_req, sizeof(echo_req));
+        struct icmphdr *icmp = (struct icmphdr *)send_buf;
+        icmp->code = 0;
+        icmp->type = ICMP_ECHO;
+        icmp->un.echo.id = getpid() & 0xFFFF;
+        icmp->un.echo.sequence = seq;
+        icmp->checksum = 0;
+        icmp->checksum = checksum(send_buf, packet_size);
         seq++;
 
-        if (sendto(sockfd, &echo_req, sizeof(echo_req), 0, (struct sockaddr *)sockaddr, sizeof(*sockaddr)) < 0)
+        if (sendto(sockfd, send_buf, packet_size, 0, (struct sockaddr *)sockaddr, sizeof(*sockaddr)) < 0)
         {
             perror("sendto");
             return (1);
@@ -183,14 +198,13 @@ int main(int argc, char **argv)
             write(1, ".", 1);
 
         // RECEIVE
-        char recv_buf[64];
         struct sockaddr_in reply_addr;
         socklen_t addr_len = sizeof(reply_addr);
         struct timeval start, end;
         ssize_t bytes;
 
         gettimeofday(&start, NULL);
-        bytes = recvfrom(sockfd, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&reply_addr, &addr_len);
+        bytes = recvfrom(sockfd, recv_buf, recv_size, 0, (struct sockaddr *)&reply_addr, &addr_len);
         if (bytes < 0)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
@@ -241,6 +255,8 @@ int main(int argc, char **argv)
             usleep(1000000);
     }
 
+    free(send_buf);
+    free(recv_buf);
     double avg = 0.0, mdev = 0.0;
     if (recv_count > 0)
     {
