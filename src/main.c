@@ -38,6 +38,21 @@ unsigned short checksum(void *buf, int len)
     return (~sum);
 }
 
+static const char *icmp_error_msg(int type, int code)
+{
+    if (type == ICMP_TIME_EXCEEDED && code == ICMP_EXC_TTL)
+        return ("Time to live exceeded");
+    if (type == ICMP_DEST_UNREACH)
+    {
+        if (code == ICMP_NET_UNREACH)
+            return ("Destination Net Unreachable");
+        if (code == ICMP_HOST_UNREACH)
+            return ("Destination Host Unreachable");
+        return ("Destination Unreachable");
+    }
+    return ("Unknown ICMP error");
+}
+
 static void sig_handler(int sig)
 {
     (void)sig;
@@ -50,18 +65,38 @@ int main(int argc, char **argv)
     struct addrinfo hints;
     struct addrinfo *res;
     
-    if (argc < 2)
-        return (printf("Not enough arguments.\n"), 1);
+    int verbose = 0;
+    int opt_idx = 1;
+
+    while (opt_idx < argc && argv[opt_idx][0] == '-')
+    {
+        if (ft_strcmp(argv[opt_idx], "-v") == 0)
+            verbose = 1;
+        else if (ft_strcmp(argv[opt_idx], "-?") == 0)
+        {
+            printf("Usage: ft_ping [-v] [-?] <destination>\n");
+            return (0);
+        }
+        else
+        {
+            fprintf(stderr, "ft_ping: invalid option -- '%s'\n", argv[opt_idx]);
+            return (1);
+        }
+        opt_idx++;
+    }
+    if (opt_idx >= argc)
+        return (printf("ft_ping: missing host operand\n"), 1);
     sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sockfd == -1)
         return (perror("sockfd failed"), 1);
+
 
     ft_memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_RAW;
     hints.ai_protocol = IPPROTO_ICMP;
 
-    int addrerror = getaddrinfo(argv[1], NULL, &hints, &res);
+    int addrerror = getaddrinfo(argv[opt_idx], NULL, &hints, &res);
     if (addrerror)
     {
         fprintf(stderr, "ft_ping: %s\n", gai_strerror(addrerror));
@@ -70,7 +105,7 @@ int main(int argc, char **argv)
 
     struct sockaddr_in *sockaddr;
     sockaddr = (struct sockaddr_in *)res->ai_addr;
-    printf("PING %s (%s) 56(84) bytes of data.\n", argv[1], inet_ntoa(sockaddr->sin_addr));
+    printf("PING %s (%s) 56(84) bytes of data.\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr));
 
     int seq = 1;
 
@@ -124,7 +159,17 @@ int main(int argc, char **argv)
         struct icmphdr *reply = (struct icmphdr *)(recv_buf + ip_hdr_len);
 
         if (reply->type != ICMP_ECHOREPLY || reply->un.echo.id != (getpid() & 0xFFFF))
+        {
+            if (verbose)
+            {
+                struct iphdr *inner_ip = (struct iphdr *)((char *)reply + 8);
+                unsigned int inner_ip_len = inner_ip->ihl * 4;
+                struct icmphdr *inner_icmp = (struct icmphdr *)((char *)inner_ip + inner_ip_len);
+                
+                printf("%d bytes from %s: icmp_seq=%d %s\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), inner_icmp->un.echo.sequence, icmp_error_msg(reply->type, reply->code));
+            }
             continue;
+        }
 
         double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
         char host[NI_MAXHOST];
@@ -155,7 +200,7 @@ int main(int argc, char **argv)
     double total_time = (prog_end.tv_sec - prog_start.tv_sec) * 1000.0 + (prog_end.tv_usec - prog_start.tv_usec) / 1000.0;
     double loss = sent_count > 0 ? (sent_count - recv_count) * 100.0 / sent_count : 0.0;
 
-    printf("\n--- %s ping statistics ---\n", argv[1]);
+    printf("\n--- %s ping statistics ---\n", argv[opt_idx]);
     printf("%d packets transmitted, %d received, %d%% packet loss, time %.0fms\n", sent_count, recv_count, (int)loss, total_time);
     printf("rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n", min_rtt, avg, max_rtt, mdev);
 
