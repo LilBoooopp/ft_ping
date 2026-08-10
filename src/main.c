@@ -67,6 +67,7 @@ int main(int argc, char **argv)
     
     int verbose = 0;
     int opt_idx = 1;
+    int ttl = 0;
 
     while (opt_idx < argc && argv[opt_idx][0] == '-')
     {
@@ -77,6 +78,15 @@ int main(int argc, char **argv)
             printf("Usage: ft_ping [-v] [-?] <destination>\n");
             return (0);
         }
+        else if (ft_strcmp(argv[opt_idx], "--ttl") == 0)
+        {
+            opt_idx++;
+            if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
+                return (printf("ft_ping: option '--ttl' requires an arugment\n"), 1);
+            ttl = ft_atoi(argv[opt_idx]);
+        }
+        else if (ft_strcmp(argv[opt_idx], "-n") == 0)
+            ;
         else
         {
             fprintf(stderr, "ft_ping: invalid option -- '%s'\n", argv[opt_idx]);
@@ -111,6 +121,9 @@ int main(int argc, char **argv)
 
     struct timeval timeout = { .tv_sec = 1, .tv_usec = 0 };
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    if (ttl > 0)
+        setsockopt(sockfd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 
     struct timeval prog_start;
     gettimeofday(&prog_start, NULL);
