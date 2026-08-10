@@ -14,15 +14,40 @@ Requires `libft` (included as a submodule). The binary is `ft_ping`.
 ## Usage
 
 ```bash
-sudo ./ft_ping [-v] [-?] <destination>
+sudo ./ft_ping [options] <destination>
 ```
 
-| Flag | Description |
-|------|-------------|
-| `-v` | Verbose - print ICMP errors from intermediate routers (TTL exceeded, unreachable, etc.) |
-| `-?` | Show usage help |
+| Flag | Argument | Description |
+|------|----------|-------------|
+| `-v` |          | Verbose - print ICMP errors from intermediate routers (TTL exceeded, unreachable, etc.) |
+| `-?` |          | Show usage help |
+| `-f` |          | Flood ping - send as fast as possible, show dots |
+| `-n` |          | Numeric output only (default, no reverse DNS) |
+| `-s` | `<size>` | Packet payload size in bytes (default: 56) |
+| `-w` | `<sec>` | Global deadline - stop after N seconds |
+| `-W` | `<sec>` | Per-packet timeout in seconds (default: 1) |
+| `--ttl` | `<n>` | Ste IP Time-to-Live |
 
 ### Examples
+
+```bash
+# Basic ping
+sudo ./ft_ping google.com
+
+# Verbose with ICMP errors
+sudo ./ft_ping -v google.com
+
+# Custom payload size
+sudo ./ft_ping -s 1024 google.com
+
+# Flood with 1-second per-packet timeout
+sudo ./ft_ping -f -W 1 google.com
+
+# Stop after 5 seconds
+sudo ./ft_ping -w 5 google.com
+```
+
+### Example output
 
 ```bash
 $ sudo ./ft_ping google.com

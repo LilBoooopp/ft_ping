@@ -1,5 +1,6 @@
 #include "../libft/libft.h"
 #include <asm-generic/errno.h>
+#include <asm-generic/socket.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,7 @@
 #include <netdb.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <time.h>
 
 static volatile sig_atomic_t keep_running = 1;
 static int sent_count = 0;
@@ -67,6 +69,11 @@ int main(int argc, char **argv)
     
     int verbose = 0;
     int opt_idx = 1;
+    int ttl = 0;
+    int deadline = 0;
+    int global_deadline = 0;
+    int flood = 0;
+    int datasize = 56;
 
     while (opt_idx < argc && argv[opt_idx][0] == '-')
     {
@@ -77,6 +84,38 @@ int main(int argc, char **argv)
             printf("Usage: ft_ping [-v] [-?] <destination>\n");
             return (0);
         }
+        else if (ft_strcmp(argv[opt_idx], "--ttl") == 0)
+        {
+            opt_idx++;
+            if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
+                return (printf("ft_ping: option '--ttl' requires an arugment\n"), 1);
+            ttl = ft_atoi(argv[opt_idx]);
+        }
+        else if (ft_strcmp(argv[opt_idx], "-W") == 0)
+        {
+            opt_idx++;
+            if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
+                return (printf("ft_ping: option '-W' requires a numeric argument\n"), 1);
+            deadline = ft_atoi(argv[opt_idx]);
+        }
+        else if (ft_strcmp(argv[opt_idx], "-w") == 0)
+        {
+            opt_idx++;
+            if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
+                return (printf("ft_ping: option '-w' requires a numeric argument\n"), 1);
+            global_deadline = ft_atoi(argv[opt_idx]);
+        }
+        else if (ft_strcmp(argv[opt_idx], "-s") == 0)
+{
+            opt_idx++;
+            if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
+                return (printf("ft_ping: option '-s' requires a numeric argument\n"), 1);
+            datasize = ft_atoi(argv[opt_idx]);
+        }
+        else if (ft_strcmp(argv[opt_idx], "-f") == 0)
+            flood = 1;
+        else if (ft_strcmp(argv[opt_idx], "-n") == 0)
+            ;
         else
         {
             fprintf(stderr, "ft_ping: invalid option -- '%s'\n", argv[opt_idx]);
@@ -105,43 +144,67 @@ int main(int argc, char **argv)
 
     struct sockaddr_in *sockaddr;
     sockaddr = (struct sockaddr_in *)res->ai_addr;
-    printf("PING %s (%s) 56(84) bytes of data.\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr));
+    printf("PING %s (%s) %d(%d) bytes of data.\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr), datasize, (int)(datasize + sizeof(struct icmphdr)));
 
     int seq = 1;
 
-    struct timeval timeout = { .tv_sec = 1, .tv_usec = 0 };
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    if (deadline > 0)
+    {
+        struct timeval tv = { .tv_sec = deadline, .tv_usec = 0 };
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
+    else
+    {
+        struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
+
+    if (ttl > 0)
+        setsockopt(sockfd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 
     struct timeval prog_start;
     gettimeofday(&prog_start, NULL);
 
+    time_t stop_time = 0;
+    if (global_deadline > 0)
+        stop_time = prog_start.tv_sec + global_deadline;
+
     signal(SIGINT, sig_handler);
+
+    int packet_size = sizeof(struct icmphdr) + datasize;
+    int recv_size = sizeof(struct iphdr) + packet_size + 64;
+
+    char *send_buf = ft_calloc(1, packet_size);
+    char *recv_buf = ft_calloc(1, recv_size);
+
     while (keep_running)
     {
-        struct icmphdr echo_req;
-        echo_req.code = 0;
-        echo_req.type = ICMP_ECHO;
-        echo_req.un.echo.id = getpid() & 0xFFFF;
-        echo_req.un.echo.sequence = seq;
-        echo_req.checksum = 0;
-        echo_req.checksum = checksum(&echo_req, sizeof(echo_req));
+        struct icmphdr *icmp = (struct icmphdr *)send_buf;
+        icmp->code = 0;
+        icmp->type = ICMP_ECHO;
+        icmp->un.echo.id = getpid() & 0xFFFF;
+        icmp->un.echo.sequence = seq;
+        icmp->checksum = 0;
+        icmp->checksum = checksum(send_buf, packet_size);
+        seq++;
 
-        if (sendto(sockfd, &echo_req, sizeof(echo_req), 0, (struct sockaddr *)sockaddr, sizeof(*sockaddr)) < 0)
+        if (sendto(sockfd, send_buf, packet_size, 0, (struct sockaddr *)sockaddr, sizeof(*sockaddr)) < 0)
         {
             perror("sendto");
             return (1);
         }
         sent_count++;
+        if (flood)
+            write(1, ".", 1);
 
         // RECEIVE
-        char recv_buf[64];
         struct sockaddr_in reply_addr;
         socklen_t addr_len = sizeof(reply_addr);
         struct timeval start, end;
         ssize_t bytes;
 
         gettimeofday(&start, NULL);
-        bytes = recvfrom(sockfd, recv_buf, sizeof(recv_buf), 0, (struct sockaddr *)&reply_addr, &addr_len);
+        bytes = recvfrom(sockfd, recv_buf, recv_size, 0, (struct sockaddr *)&reply_addr, &addr_len);
         if (bytes < 0)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
@@ -170,10 +233,14 @@ int main(int argc, char **argv)
 
         double rtt = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_usec - start.tv_usec) / 1000.0;
         char host[NI_MAXHOST];
-        if (getnameinfo((struct sockaddr *)&reply_addr, sizeof(reply_addr), host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0)
-            printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
+        if (flood)
+            write(1, "\b \b", 3);
+        else
+        {
+            if (getnameinfo((struct sockaddr *)&reply_addr, sizeof(reply_addr), host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0)
+                printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
+        }
 
-        seq++;
         recv_count++;
         if (rtt < min_rtt) min_rtt = rtt;
         if (rtt > max_rtt) max_rtt = rtt;
@@ -182,9 +249,14 @@ int main(int argc, char **argv)
 
         if (!keep_running)
             break;
-        usleep(1000000);
+        if (global_deadline > 0 && time(NULL) >= stop_time)
+            break;
+        if (!flood)
+            usleep(1000000);
     }
 
+    free(send_buf);
+    free(recv_buf);
     double avg = 0.0, mdev = 0.0;
     if (recv_count > 0)
     {
