@@ -1,5 +1,6 @@
 #include "../libft/libft.h"
 #include <asm-generic/errno.h>
+#include <asm-generic/socket.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,7 @@
 #include <netdb.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <time.h>
 
 static volatile sig_atomic_t keep_running = 1;
 static int sent_count = 0;
@@ -68,6 +70,8 @@ int main(int argc, char **argv)
     int verbose = 0;
     int opt_idx = 1;
     int ttl = 0;
+    int deadline = 0;
+    int global_deadline = 0;
 
     while (opt_idx < argc && argv[opt_idx][0] == '-')
     {
@@ -84,6 +88,20 @@ int main(int argc, char **argv)
             if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
                 return (printf("ft_ping: option '--ttl' requires an arugment\n"), 1);
             ttl = ft_atoi(argv[opt_idx]);
+        }
+        else if (ft_strcmp(argv[opt_idx], "-W") == 0)
+        {
+            opt_idx++;
+            if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
+                return (printf("ft_ping: option '-W' requires a numeric argument\n"), 1);
+            deadline = ft_atoi(argv[opt_idx]);
+        }
+        else if (ft_strcmp(argv[opt_idx], "-w") == 0)
+        {
+            opt_idx++;
+            if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
+                return (printf("ft_ping: option '-w' requires a numeric argument\n"), 1);
+            global_deadline = ft_atoi(argv[opt_idx]);
         }
         else if (ft_strcmp(argv[opt_idx], "-n") == 0)
             ;
@@ -119,14 +137,26 @@ int main(int argc, char **argv)
 
     int seq = 1;
 
-    struct timeval timeout = { .tv_sec = 1, .tv_usec = 0 };
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    if (deadline > 0)
+    {
+        struct timeval tv = { .tv_sec = deadline, .tv_usec = 0 };
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
+    else
+    {
+        struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
 
     if (ttl > 0)
         setsockopt(sockfd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
 
     struct timeval prog_start;
     gettimeofday(&prog_start, NULL);
+
+    time_t stop_time = 0;
+    if (global_deadline > 0)
+        stop_time = prog_start.tv_sec + global_deadline;
 
     signal(SIGINT, sig_handler);
     while (keep_running)
@@ -138,6 +168,7 @@ int main(int argc, char **argv)
         echo_req.un.echo.sequence = seq;
         echo_req.checksum = 0;
         echo_req.checksum = checksum(&echo_req, sizeof(echo_req));
+        seq++;
 
         if (sendto(sockfd, &echo_req, sizeof(echo_req), 0, (struct sockaddr *)sockaddr, sizeof(*sockaddr)) < 0)
         {
@@ -186,7 +217,6 @@ int main(int argc, char **argv)
         if (getnameinfo((struct sockaddr *)&reply_addr, sizeof(reply_addr), host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0)
             printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
 
-        seq++;
         recv_count++;
         if (rtt < min_rtt) min_rtt = rtt;
         if (rtt > max_rtt) max_rtt = rtt;
@@ -194,6 +224,8 @@ int main(int argc, char **argv)
         sum_rtt_sq += rtt * rtt;
 
         if (!keep_running)
+            break;
+        if (global_deadline > 0 && time(NULL) >= stop_time)
             break;
         usleep(1000000);
     }
