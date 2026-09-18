@@ -144,7 +144,7 @@ int main(int argc, char **argv)
 
     struct sockaddr_in *sockaddr;
     sockaddr = (struct sockaddr_in *)res->ai_addr;
-    printf("PING %s (%s) %d(%d) bytes of data.\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr), datasize, (int)(datasize + sizeof(struct icmphdr)));
+    printf("PING %s (%s) %d(%d) bytes of data.\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr), datasize, (int)(datasize + sizeof(struct icmphdr) + sizeof(struct iphdr)));
 
     int seq = 1;
 
