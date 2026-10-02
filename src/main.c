@@ -111,6 +111,8 @@ int main(int argc, char **argv)
             if (opt_idx >= argc || !ft_isdigit(argv[opt_idx][0]))
                 return (printf("ft_ping: option '-s' requires a numeric argument\n"), 1);
             datasize = ft_atoi(argv[opt_idx]);
+            if (datasize < 0 || datasize > 65507)
+                return (printf("ft_ping: invalid packet size: %s\n", argv[opt_idx]), 1);
         }
         else if (ft_strcmp(argv[opt_idx], "-f") == 0)
             flood = 1;
@@ -144,13 +146,15 @@ int main(int argc, char **argv)
 
     struct sockaddr_in *sockaddr;
     sockaddr = (struct sockaddr_in *)res->ai_addr;
-    printf("PING %s (%s) %d(%d) bytes of data.\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr), datasize, (int)(datasize + sizeof(struct icmphdr) + sizeof(struct iphdr)));
+    printf("PING %s (%s): %d data bytes\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr), datasize);
 
     int seq = 1;
 
     if (deadline > 0)
     {
-        struct timeval tv = { .tv_sec = deadline, .tv_usec = 0 };
+        struct timeval tv;
+        tv.tv_sec = (time_t)deadline;
+        tv.tv_usec = (time_t)((deadline - tv.tv_sec) * 1000000);
         setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     }
     else
@@ -176,6 +180,8 @@ int main(int argc, char **argv)
 
     char *send_buf = ft_calloc(1, packet_size);
     char *recv_buf = ft_calloc(1, recv_size);
+    if (!send_buf || !recv_buf)
+        return (perror("ft_calloc"), 1);
 
     while (keep_running)
     {
@@ -190,8 +196,12 @@ int main(int argc, char **argv)
 
         if (sendto(sockfd, send_buf, packet_size, 0, (struct sockaddr *)sockaddr, sizeof(*sockaddr)) < 0)
         {
-            perror("sendto");
-            return (1);
+            if (verbose)
+                perror("sendto");
+            sent_count++;
+            if (!flood)
+                usleep(1000000);
+            continue;
         }
         sent_count++;
         if (flood)
@@ -209,8 +219,9 @@ int main(int argc, char **argv)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
                 continue; // packet lost
-            perror("recvfrom");
-            return (1);
+            if (verbose)
+                perror("recvfrom");
+            continue;
         }
         gettimeofday(&end, NULL);
 
@@ -220,13 +231,24 @@ int main(int argc, char **argv)
 
         if (reply->type != ICMP_ECHOREPLY || reply->un.echo.id != (getpid() & 0xFFFF))
         {
-            if (verbose)
+            int is_icmp_error = (reply->type == ICMP_DEST_UNREACH
+                || reply->type == ICMP_TIME_EXCEEDED
+                || reply->type == ICMP_SOURCE_QUENCH
+                || reply->type == ICMP_REDIRECT
+                || reply->type == ICMP_PARAMETERPROB);
+
+            if (verbose && is_icmp_error)
             {
-                struct iphdr *inner_ip = (struct iphdr *)((char *)reply + 8);
-                unsigned int inner_ip_len = inner_ip->ihl * 4;
-                struct icmphdr *inner_icmp = (struct icmphdr *)((char *)inner_ip + inner_ip_len);
-                
-                printf("%d bytes from %s: icmp_seq=%d %s\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), inner_icmp->un.echo.sequence, icmp_error_msg(reply->type, reply->code));
+                ssize_t payload_len = bytes - ip_hdr_len;
+                if (payload_len < (ssize_t)(8 + sizeof(struct iphdr) + 8))
+                    printf("From %s icmp_seq=? %s \n", inet_ntoa(reply_addr.sin_addr), icmp_error_msg(reply->type, reply->code));
+                else
+                {
+                    struct iphdr *inner_ip = (struct iphdr *)((char *)reply + 8);
+                    unsigned int inner_ip_len = inner_ip->ihl * 4;
+                    struct icmphdr *inner_icmp = (struct icmphdr *)((char *)inner_ip + inner_ip_len);
+                    printf("From %s icmp_seq=%d %s\n", inet_ntoa(reply_addr.sin_addr), inner_icmp->un.echo.sequence, icmp_error_msg(reply->type, reply->code));
+                }
             }
             continue;
         }
@@ -266,13 +288,10 @@ int main(int argc, char **argv)
     else
         min_rtt = 0.0;
 
-    struct timeval prog_end;
-    gettimeofday(&prog_end, NULL);
-    double total_time = (prog_end.tv_sec - prog_start.tv_sec) * 1000.0 + (prog_end.tv_usec - prog_start.tv_usec) / 1000.0;
     double loss = sent_count > 0 ? (sent_count - recv_count) * 100.0 / sent_count : 0.0;
 
     printf("\n--- %s ping statistics ---\n", argv[opt_idx]);
-    printf("%d packets transmitted, %d received, %d%% packet loss, time %.0fms\n", sent_count, recv_count, (int)loss, total_time);
+    printf("%d packets transmitted, %d packets received, %d%% packet loss\n", sent_count, recv_count, (int)loss);
     printf("rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n", min_rtt, avg, max_rtt, mdev);
 
     freeaddrinfo(res);
