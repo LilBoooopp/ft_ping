@@ -3,7 +3,7 @@ NAME = ft_ping
 CC   = cc
 INC = include
 RM   = rm -rf
-FLAGS = -Werror -Wextra -Wall -g -I$(INC) -lm#-fsanitize=address
+FLAGS = -Werror -Wextra -Wall -g -I$(INC) #-fsanitize=address
 MAKE := make --no-print-directory
 
 #────────────────────────────  LIBFT SECTION  ────────────────────────────────#
@@ -60,7 +60,7 @@ $(LIBFT):
 	@$(MAKE) -C $(LIBFT_DIR)
 
 $(NAME): $(OBJECTS)
-	@$(CC) $(FLAGS) $(OBJECTS) $(LIBFT) $(PRINTF) -o $(NAME)
+	@$(CC) $(FLAGS) $(OBJECTS) $(LIBFT) $(PRINTF) -lm -o $(NAME)
 	@printf "\033[1;32m\n✅ $(NAME) successfully compiled!\n\033[0m"
 	@rm .counter
 
