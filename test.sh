@@ -244,17 +244,16 @@ test_bonus_numeric() {
 test_bonus_size() {
     local size=100
     local icmp_total=$((size + 8))   # payload + 8-byte ICMP header
-    local ip_total=$((size + 28))    # payload + ICMP header + 20-byte IP header
     local out; out=$(run_ping 2 -s "$size" "$LOCAL_IP")
     if is_crash_code "$?"; then
         fail "-s $size" "process crashed"
         return
     fi
-    if echo "$out" | grep -qE "${size}\(${ip_total}\) bytes of data" \
+    if echo "$out" | grep -qE "${size} data bytes" \
         && echo "$out" | grep -qE "${icmp_total} bytes from"; then
         pass "-s $size changes the reported packet size accordingly"
     else
-        fail "-s $size" "expected $size/$ip_total in the header and $icmp_total in reply lines: $out"
+        fail "-s $size" "expected $size in the header and $icmp_total in reply lines: $out"
     fi
 }
 

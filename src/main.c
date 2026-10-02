@@ -148,7 +148,7 @@ int main(int argc, char **argv)
     sockaddr = (struct sockaddr_in *)res->ai_addr;
     printf("PING %s (%s): %d data bytes\n", argv[opt_idx], inet_ntoa(sockaddr->sin_addr), datasize);
 
-    int seq = 1;
+    int seq = 0;
 
     if (deadline > 0)
     {
@@ -185,6 +185,8 @@ int main(int argc, char **argv)
 
     while (keep_running)
     {
+        if (global_deadline > 0 && time(NULL) >= stop_time)
+            break;
         struct icmphdr *icmp = (struct icmphdr *)send_buf;
         icmp->code = 0;
         icmp->type = ICMP_ECHO;
@@ -260,7 +262,7 @@ int main(int argc, char **argv)
         else
         {
             if (getnameinfo((struct sockaddr *)&reply_addr, sizeof(reply_addr), host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0)
-                printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.1f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
+                printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", (int)(bytes - ip_hdr_len), inet_ntoa(reply_addr.sin_addr), reply->un.echo.sequence, ip->ttl, rtt);
         }
 
         recv_count++;
