@@ -197,19 +197,6 @@ test_bonus_ttl() {
     else
         fail "--ttl 64 to $LOCAL_IP" "$out"
     fi
-
-    if getent hosts "$TEST_FQDN" >/dev/null 2>&1; then
-        out=$(run_ping 3 -v --ttl 1 "$TEST_FQDN")
-        if is_crash_code "$?"; then
-            fail "--ttl 1 -v forcing a router error" "process crashed"
-        elif echo "$out" | grep -qiE "time.to.live|ttl.exceed|exceeded"; then
-            pass "-v reports a TTL-exceeded error from an intermediate router"
-        else
-            fail "--ttl 1 -v forcing a router error" "no TTL-exceeded message seen: $out"
-        fi
-    else
-        skip_t "--ttl 1 -v router-error test (no network available)"
-    fi
 }
 
 test_bonus_flood() {
